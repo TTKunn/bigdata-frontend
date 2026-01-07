@@ -99,7 +99,7 @@ class ApiService {
   }
 
   /**
-   * DELETE请求
+   * DELETE请求 (查询参数)
    * @param {string} endpoint - API端点
    * @param {object} params - 查询参数
    * @returns {Promise<any>}
@@ -110,6 +110,19 @@ class ApiService {
 
     return this.request(url, {
       method: 'DELETE'
+    })
+  }
+
+  /**
+   * DELETE请求 (请求体)
+   * @param {string} endpoint - API端点
+   * @param {object} data - 请求体数据
+   * @returns {Promise<any>}
+   */
+  async deleteWithBody(endpoint, data = {}) {
+    return this.request(endpoint, {
+      method: 'DELETE',
+      body: data
     })
   }
 }

@@ -218,11 +218,15 @@ const handleCurrentChange = async (newPage) => {
   }
 }
 
-const handleAddToCart = (product) => {
-  // 商品列表中没有库存信息，允许添加到购物车
-  // 实际的库存验证会在后端进行
-  cartStore.addToCart(product)
-  ElMessage.success(`${product.name} 已加入购物车`)
+const handleAddToCart = async (product) => {
+  try {
+    // 异步添加到购物车，后端同步由cartStore内部处理
+    await cartStore.addToCart(product)
+    // 成功消息由cartStore内部处理
+  } catch (error) {
+    // 错误消息由cartStore内部处理
+    console.error('添加到购物车失败:', error)
+  }
 }
 
 const handleViewDetail = async (product) => {

@@ -11,7 +11,27 @@
     </el-card>
 
     <div v-else class="cart-content">
-      <el-card class="cart-items">
+      <!-- 同步状态提示 -->
+      <div v-if="cartStore.isSyncing" class="sync-status">
+        <el-icon class="is-loading">
+          <Loading />
+        </el-icon>
+        <span>正在同步数据...</span>
+      </div>
+
+      <!-- 加载状态 -->
+      <div v-if="cartStore.isLoading" class="loading-section">
+        <el-skeleton
+          :loading="cartStore.isLoading"
+          animated
+          :count="3"
+          :rows="4"
+        />
+      </div>
+
+      <!-- 购物车内容 -->
+      <div v-else>
+        <el-card class="cart-items">
         <el-table ref="tableRef" :data="cartStore.items" style="width: 100%" @selection-change="handleSelectionChange">
           <el-table-column type="selection" width="55" :selectable="() => true" />
 
@@ -84,6 +104,7 @@
           </div>
         </div>
       </el-card>
+      </div> <!-- 关闭购物车内容div -->
     </div>
 
     <!-- 支付弹窗 -->
@@ -101,7 +122,7 @@
 import { ref, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete as DeleteIcon } from '@element-plus/icons-vue'
+import { Delete as DeleteIcon, Loading } from '@element-plus/icons-vue'
 import { useCartStore } from '../../stores/cart'
 import PaymentDialog from '../../components/PaymentDialog.vue'
 
@@ -110,6 +131,21 @@ const cartStore = useCartStore()
 const tableRef = ref(null)
 const isSyncing = ref(false)  // 标志位，防止循环触发
 const showPaymentDialog = ref(false)
+
+// 页面加载时获取购物车数据
+onMounted(async () => {
+  try {
+    // 检查是否需要同步数据
+    if (cartStore.needsSync()) {
+      await cartStore.fetchCart()
+    }
+    // 同步表格选中状态
+    await nextTick()
+    syncTableSelection()
+  } catch (error) {
+    console.error('获取购物车数据失败:', error)
+  }
+})
 
 const goToHome = () => {
   router.push('/customer/home')
@@ -164,38 +200,57 @@ const handleSelectionChange = (selectedRows) => {
   })
 }
 
-const handleQuantityChange = (productId, quantity) => {
-  cartStore.updateQuantity(productId, quantity)
+const handleQuantityChange = async (productId, quantity) => {
+  try {
+    await cartStore.updateQuantity(productId, quantity)
+  } catch (error) {
+    // 错误已经由cartStore处理，这里不需要额外处理
+    console.error('更新数量失败:', error)
+  }
 }
 
-const handleRemove = (item) => {
-  ElMessageBox.confirm(
-    `确定要从购物车中删除 ${item.name} 吗？`,
-    '提示',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
+const handleRemove = async (item) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要从购物车中删除 ${item.name} 吗？`,
+      '提示',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    // 使用异步删除方法
+    await cartStore.removeItems([item.id])
+  } catch (error) {
+    // 用户取消或删除失败，错误已由cartStore处理
+    if (error !== 'cancel') {
+      console.error('删除商品失败:', error)
     }
-  ).then(() => {
-    cartStore.removeFromCart(item.id)
-    ElMessage.success('删除成功')
-  }).catch(() => {})
+  }
 }
 
-const handleClearCart = () => {
-  ElMessageBox.confirm(
-    '确定要清空购物车吗？',
-    '提示',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
+const handleClearCart = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要清空购物车吗？',
+      '提示',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    // 使用异步清空方法
+    await cartStore.clearCart()
+  } catch (error) {
+    // 用户取消或清空失败，错误已由cartStore处理
+    if (error !== 'cancel') {
+      console.error('清空购物车失败:', error)
     }
-  ).then(() => {
-    cartStore.clearCart()
-    ElMessage.success('购物车已清空')
-  }).catch(() => {})
+  }
 }
 
 const handleCheckout = () => {
@@ -209,17 +264,22 @@ const handleCheckout = () => {
   showPaymentDialog.value = true
 }
 
-const handlePaymentSuccess = () => {
-  // 支付成功后，清空选中的商品
-  cartStore.clearSelected()
+const handlePaymentSuccess = async () => {
+  try {
+    // 支付成功后，清空选中的商品
+    await cartStore.clearSelected()
 
-  // 生成订单ID（实际应由后端生成）
-  const orderId = Date.now()
+    // 生成订单ID（实际应由后端生成）
+    const orderId = Date.now()
 
-  ElMessage.success('订单支付成功！')
+    ElMessage.success('订单支付成功！')
 
-  // 跳转到订单详情页
-  router.push(`/customer/orders/${orderId}`)
+    // 跳转到订单详情页
+    router.push(`/customer/orders/${orderId}`)
+  } catch (error) {
+    console.error('处理支付成功失败:', error)
+    ElMessage.error('处理订单失败，请稍后查看订单状态')
+  }
 }
 </script>
 
@@ -361,5 +421,28 @@ const handlePaymentSuccess = () => {
 .checkout-btn {
   min-width: 140px;
   height: 44px;
+}
+
+/* 同步状态样式 */
+.sync-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  background-color: #f0f9ff;
+  border: 1px solid #d1ecf1;
+  border-radius: 4px;
+  color: #31708f;
+  margin-bottom: 16px;
+}
+
+.sync-status .el-icon {
+  font-size: 16px;
+}
+
+/* 加载状态样式 */
+.loading-section {
+  padding: 40px 0;
 }
 </style>
