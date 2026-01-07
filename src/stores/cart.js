@@ -34,18 +34,21 @@ export const useCartStore = defineStore('cart', () => {
   })
 
   function addToCart(product) {
+    // product.id 现在是字符串类型 (后端API返回)
     const existingItem = items.value.find(item => item.id === product.id)
 
     if (existingItem) {
       existingItem.quantity++
     } else {
       items.value.push({
-        id: product.id,
+        id: product.id,              // 字符串类型 (12位商品ID)
         name: product.name,
         price: product.price,
-        image: product.image,
+        image: product.image,        // 已经过处理的图片URL
+        category: product.category,  // 分类ID
+        brand: product.brand,        // 品牌 (可能为空)
         quantity: 1,
-        selected: true  // 新商品默认选中
+        selected: true               // 新商品默认选中
       })
     }
   }

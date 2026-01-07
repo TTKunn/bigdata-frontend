@@ -24,7 +24,7 @@
             <div class="stat-content">
               <el-icon class="stat-icon products"><BoxIcon /></el-icon>
               <div class="stat-info">
-                <div class="stat-value">8</div>
+                <div class="stat-value">{{ totalProducts }}</div>
                 <div class="stat-label">商品总数</div>
               </div>
             </div>
@@ -63,52 +63,95 @@
         <h2>商品列表</h2>
       </div>
 
-      <el-row :gutter="20">
-      <el-col
-        v-for="product in products"
-        :key="product.id"
-        :xs="24"
-        :sm="12"
-        :md="8"
-        :lg="6"
-      >
-        <el-card class="product-card" shadow="hover">
-          <div class="product-image">
-            <img :src="product.image" :alt="product.name" />
-            <el-tag class="category-tag" type="info" size="small">
-              {{ product.category }}
-            </el-tag>
-          </div>
+      <!-- 加载状态 -->
+      <div v-if="isLoading" class="loading-container">
+        <el-skeleton
+          :loading="isLoading"
+          animated
+          :count="8"
+          :rows="4"
+          :throttle="500"
+        />
+      </div>
 
-          <div class="product-info">
-            <h3 class="product-name">{{ product.name }}</h3>
-            <p class="product-description">{{ product.description }}</p>
+      <!-- 错误状态 -->
+      <div v-else-if="hasError" class="error-container">
+        <el-alert
+          title="获取商品列表失败"
+          :description="error"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+        <div class="error-actions">
+          <el-button type="primary" @click="refreshProducts">
+            重新加载
+          </el-button>
+        </div>
+      </div>
 
-            <div class="product-footer">
-              <div class="price-section">
-                <span class="price">¥{{ product.price.toLocaleString() }}</span>
-                <span class="stock">库存: {{ product.stock }}</span>
+      <!-- 商品列表 -->
+      <div v-else>
+        <el-row :gutter="20" v-if="products.length > 0">
+          <el-col
+            v-for="product in products"
+            :key="product.id"
+            :xs="24"
+            :sm="12"
+            :md="8"
+            :lg="6"
+          >
+            <el-card class="product-card" shadow="hover">
+              <div class="product-image">
+                <img :src="product.image" :alt="product.name" />
+                <!-- 品牌标签 -->
+                <el-tag
+                  v-if="product.brand"
+                  class="brand-tag"
+                  type="success"
+                  size="small"
+                >
+                  {{ product.brand }}
+                </el-tag>
               </div>
 
-              <el-button
-                type="primary"
-                :icon="ShoppingCartIcon"
-                @click="handleViewDetail(product)"
-                :disabled="product.stock === 0"
-              >
-                {{ product.stock > 0 ? '加入购物车' : '已售罄' }}
-              </el-button>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+              <div class="product-info">
+                <h3 class="product-name">{{ product.name }}</h3>
+                <p class="product-description">{{ product.description || '暂无描述' }}</p>
+
+                <div class="product-footer">
+                  <div class="price-section">
+                    <span class="price">¥{{ product.price.toLocaleString() }}</span>
+                  </div>
+
+                  <el-button
+                    type="primary"
+                    :icon="ShoppingCartIcon"
+                    @click="handleViewDetail(product)"
+                  >
+                    查看详情
+                  </el-button>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <!-- 空状态 -->
+        <div v-else class="empty-container">
+          <el-empty description="暂无商品数据">
+            <el-button type="primary" @click="refreshProducts">
+              重新加载
+            </el-button>
+          </el-empty>
+        </div>
+      </div>
 
     <!-- 分页组件 -->
-    <div class="pagination-container">
+    <div class="pagination-container" v-if="!isLoading && !hasError && totalProducts > 0">
       <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
+        :current-page="currentPage"
+        :page-size="pageSize"
         :page-sizes="[8, 16, 24, 32]"
         :total="totalProducts"
         layout="total, sizes, prev, pager, next, jumper"
@@ -126,51 +169,80 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ShoppingCart as ShoppingCartIcon, Box as BoxIcon, User as UserIcon, Money as MoneyIcon } from '@element-plus/icons-vue'
 import { useCartStore } from '../../stores/cart'
-import { products as mockProducts } from '../../mock/products'
+import { useProductStore } from '../../stores/product'
 import ProductDetailDialog from '../../components/ProductDetailDialog.vue'
 
 const cartStore = useCartStore()
+const productStore = useProductStore()
 const detailDialogVisible = ref(false)
 const selectedProduct = ref(null)
 
-// 分页相关状态
-const currentPage = ref(1)
-const pageSize = ref(8)
-const totalProducts = ref(mockProducts.length)
+// 使用store中的数据
+const products = computed(() => productStore.products)
+const totalProducts = computed(() => productStore.totalProducts)
+const currentPage = computed(() => productStore.currentPage)
+const pageSize = computed(() => productStore.pageSize)
+const isLoading = computed(() => productStore.isLoading)
+const hasError = computed(() => productStore.hasError)
+const error = computed(() => productStore.error)
 
-// 计算当前页显示的商品
-const products = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return mockProducts.slice(start, end)
+// 组件挂载时获取商品数据
+onMounted(async () => {
+  try {
+    await productStore.fetchProducts(1, 8)
+  } catch (error) {
+    ElMessage.error('获取商品列表失败，请稍后重试')
+  }
 })
 
 // 分页事件处理
-const handleSizeChange = (newSize) => {
-  pageSize.value = newSize
-  currentPage.value = 1
-}
-
-const handleCurrentChange = (newPage) => {
-  currentPage.value = newPage
-  // 滚动到页面顶部
-  window.scrollTo({ top: 0, behavior: 'smooth' })
-}
-
-const handleAddToCart = (product) => {
-  if (product.stock > 0) {
-    cartStore.addToCart(product)
-    ElMessage.success(`${product.name} 已加入购物车`)
+const handleSizeChange = async (newSize) => {
+  try {
+    await productStore.changePageSize(newSize)
+  } catch (error) {
+    ElMessage.error('切换页面大小失败')
   }
 }
 
-const handleViewDetail = (product) => {
-  selectedProduct.value = product
-  detailDialogVisible.value = true
+const handleCurrentChange = async (newPage) => {
+  try {
+    await productStore.goToPage(newPage)
+    // 滚动到页面顶部
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  } catch (error) {
+    ElMessage.error('切换页面失败')
+  }
+}
+
+const handleAddToCart = (product) => {
+  // 商品列表中没有库存信息，允许添加到购物车
+  // 实际的库存验证会在后端进行
+  cartStore.addToCart(product)
+  ElMessage.success(`${product.name} 已加入购物车`)
+}
+
+const handleViewDetail = async (product) => {
+  try {
+    // 获取完整的商品详情
+    const productDetail = await productStore.fetchProductDetail(product.id)
+    selectedProduct.value = productDetail
+    detailDialogVisible.value = true
+  } catch (error) {
+    ElMessage.error('获取商品详情失败')
+  }
+}
+
+// 刷新商品列表
+const refreshProducts = async () => {
+  try {
+    await productStore.refreshProducts()
+  } catch (error) {
+    ElMessage.error('刷新商品列表失败')
+  }
 }
 </script>
 
@@ -230,11 +302,6 @@ const handleViewDetail = (product) => {
   object-fit: cover;
 }
 
-.category-tag {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-}
 
 .product-info {
   padding: 16px 0 0;
@@ -252,14 +319,15 @@ const handleViewDetail = (product) => {
 
 .product-description {
   font-size: 14px;
-  color: #606266;
-  margin-bottom: 16px;
-  height: 40px;
+  color: #909399;
+  margin-bottom: 12px;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  line-height: 1.4;
 }
+
 
 .product-footer {
   display: flex;
@@ -353,5 +421,33 @@ const handleViewDetail = (product) => {
   margin-top: 32px;
   padding-top: 24px;
   border-top: 1px solid #e8e8e8;
+}
+
+/* 加载状态样式 */
+.loading-container {
+  padding: 40px 0;
+}
+
+/* 错误状态样式 */
+.error-container {
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.error-actions {
+  margin-top: 16px;
+}
+
+/* 空状态样式 */
+.empty-container {
+  padding: 60px 20px;
+  text-align: center;
+}
+
+/* 品牌标签样式 */
+.brand-tag {
+  position: absolute;
+  top: 12px;
+  left: 12px;
 }
 </style>

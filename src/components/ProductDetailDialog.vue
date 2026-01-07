@@ -17,9 +17,18 @@
           <div class="product-info-section">
             <h2 class="product-title">{{ product.name }}</h2>
 
+            <!-- 品牌信息 -->
+            <div v-if="product.brand" class="brand-section">
+              <el-tag type="success" size="small">{{ product.brand }}</el-tag>
+            </div>
+
             <div class="price-section">
               <span class="price-label">价格：</span>
               <span class="price">¥{{ product.price.toLocaleString() }}</span>
+              <!-- 显示成本价（如果存在） -->
+              <span v-if="product.cost" class="cost-price">
+                (成本: ¥{{ product.cost.toLocaleString() }})
+              </span>
             </div>
 
             <el-divider />
@@ -27,20 +36,52 @@
             <div class="info-item">
               <span class="label">库存：</span>
               <span class="stock-value">
-                {{ product.stock > 0 ? `${product.stock} 件` : '已售罄' }}
+                {{ getStockDisplay(product) }}
               </span>
             </div>
 
             <div class="info-item">
               <span class="label">商品编号：</span>
-              <span class="value">{{ product.id.toString().padStart(8, '0') }}</span>
+              <span class="value">{{ product.id }}</span>
+            </div>
+
+
+            <!-- 商品标签 -->
+            <div v-if="product.tags && product.tags.length > 0" class="info-item">
+              <span class="label">标签：</span>
+              <div class="tags-container">
+                <el-tag
+                  v-for="tag in product.tags"
+                  :key="tag"
+                  type="info"
+                  size="small"
+                  class="tag-item"
+                >
+                  {{ tag }}
+                </el-tag>
+              </div>
             </div>
 
             <el-divider />
 
             <div class="description-section">
               <h3 class="section-title">商品描述</h3>
-              <p class="description">{{ product.description }}</p>
+              <p class="description">{{ product.description || '暂无描述' }}</p>
+            </div>
+
+            <!-- 商品规格参数 -->
+            <div v-if="product.spec && Object.keys(product.spec).length > 0" class="spec-section">
+              <el-divider />
+              <h3 class="section-title">规格参数</h3>
+              <el-descriptions :column="1" size="small" border>
+                <el-descriptions-item
+                  v-for="(value, key) in product.spec"
+                  :key="key"
+                  :label="key"
+                >
+                  {{ value }}
+                </el-descriptions-item>
+              </el-descriptions>
             </div>
 
             <el-divider />
@@ -50,8 +91,8 @@
               <el-input-number
                 v-model="quantity"
                 :min="1"
-                :max="Math.min(product.stock, 99)"
-                :disabled="product.stock === 0"
+                :max="Math.min(product.stock || 0, 99)"
+                :disabled="(product.stock || 0) === 0"
               />
             </div>
 
@@ -61,7 +102,7 @@
                 size="large"
                 :icon="ShoppingCartIcon"
                 @click="handleAddToCart"
-                :disabled="product.stock === 0"
+                :disabled="(product.stock || 0) === 0"
                 class="add-cart-btn"
               >
                 加入购物车
@@ -99,6 +140,7 @@ import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ShoppingCart as ShoppingCartIcon } from '@element-plus/icons-vue'
 import { useCartStore } from '../stores/cart'
+import { productService } from '../services/productService'
 
 const props = defineProps({
   modelValue: {
@@ -132,8 +174,27 @@ const handleClose = () => {
   dialogVisible.value = false
 }
 
+// 获取库存显示文本
+const getStockDisplay = (product) => {
+  const stock = product.stock || 0
+  if (stock > 0) {
+    return `${stock} 件`
+  }
+  return '已售罄'
+}
+
+// 获取状态标签类型
+const getStatusTagType = (status) => {
+  return productService.getStatusTagType(status || 'ACTIVE')
+}
+
+// 获取状态文本
+const getStatusText = (status) => {
+  return productService.getStatusText(status || 'ACTIVE')
+}
+
 const handleAddToCart = () => {
-  if (props.product && props.product.stock > 0) {
+  if (props.product && (props.product.stock || 0) > 0) {
     for (let i = 0; i < quantity.value; i++) {
       cartStore.addToCart(props.product)
     }
@@ -141,6 +202,8 @@ const handleAddToCart = () => {
     quantity.value = 1
     // 添加成功后关闭弹窗
     handleClose()
+  } else {
+    ElMessage.warning('商品库存不足，无法添加到购物车')
   }
 }
 </script>
@@ -187,6 +250,11 @@ const handleAddToCart = () => {
   margin: 0;
 }
 
+/* 品牌信息样式 */
+.brand-section {
+  margin: 8px 0;
+}
+
 .price-section {
   display: flex;
   align-items: baseline;
@@ -202,6 +270,12 @@ const handleAddToCart = () => {
   font-size: 32px;
   font-weight: 700;
   color: #f56c6c;
+}
+
+.cost-price {
+  font-size: 14px;
+  color: #909399;
+  margin-left: 12px;
 }
 
 .info-item {
@@ -270,6 +344,22 @@ const handleAddToCart = () => {
 
 .product-details-section {
   margin-top: 24px;
+}
+
+/* 标签容器样式 */
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-item {
+  margin: 0;
+}
+
+/* 规格参数样式 */
+.spec-section {
+  margin-top: 16px;
 }
 
 @media (max-width: 768px) {
