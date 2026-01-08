@@ -72,7 +72,9 @@ export class OrderService {
       })
 
       return {
-        orders: response.orders.map(order => this.transformOrderListItem(order)),
+        orders: response.orders
+          .filter(order => !order.orderId.startsWith('test')) // 过滤测试订单
+          .map(order => this.transformOrderListItem(order)),
         pagination: response.pagination
       }
     } catch (error) {
@@ -290,9 +292,39 @@ export class OrderService {
       price: item.price,
       quantity: item.quantity,
       totalAmount: item.totalAmount || (item.price * item.quantity),
-      // 图片URL，如果后端返回则使用，否则使用占位图
-      image: item.imageUrl || item.image || `https://via.placeholder.com/80x80?text=${encodeURIComponent(item.productName || 'Product')}`
+      // 图片URL - 处理后端返回的 imageUrl 字段（支持 HTTP URL 和 HDFS 路径）
+      image: this.extractImageUrl(item.imageUrl || item.image, item.productName)
     }
+  }
+
+  /**
+   * 提取并转换图片URL
+   * @param {string} imageUrl - 图片URL（可能是 HTTP URL 或 HDFS 路径）
+   * @param {string} productName - 商品名称（用于占位图）
+   * @returns {string} 处理后的图片URL
+   */
+  extractImageUrl(imageUrl, productName = 'Product') {
+    // 如果没有图片URL，使用占位图
+    if (!imageUrl) {
+      return `https://via.placeholder.com/80x80?text=${encodeURIComponent(productName)}`
+    }
+
+    // 如果已经是完整的 HTTP/HTTPS URL，直接返回
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return imageUrl
+    }
+
+    // 如果是 HDFS 路径，转换为后端图片服务 URL
+    if (imageUrl.startsWith('hdfs://')) {
+      // 从 HDFS 路径中提取文件名
+      const fileName = imageUrl.split('/').pop()
+      const convertedUrl = `http://localhost:8080/api/images/${fileName}`
+      console.log('订单商品图片 HDFS路径转换:', imageUrl, '->', convertedUrl)
+      return convertedUrl
+    }
+
+    // 其他情况，假设是相对路径，拼接为完整 URL
+    return `http://localhost:8080/api/images/${imageUrl}`
   }
 
   /**
@@ -326,15 +358,24 @@ export class OrderService {
   }
 
   /**
-   * 格式化日期时间
-   * @param {string} dateTimeStr - ISO 8601格式的日期时间字符串
-   * @returns {string} 格式化的日期时间字符串
+   * 格式化日期时间（UTC 时间转换为本地时间）
+   * @param {string} dateTimeStr - ISO 8601格式的日期时间字符串（UTC时间）
+   * @returns {string} 格式化的本地日期时间字符串
    */
   formatDateTime(dateTimeStr) {
     if (!dateTimeStr) return '-'
 
     try {
+      // 解析 UTC 时间字符串
       const date = new Date(dateTimeStr)
+
+      // 检查日期是否有效
+      if (isNaN(date.getTime())) {
+        console.error('无效的日期格式:', dateTimeStr)
+        return dateTimeStr
+      }
+
+      // 使用本地时间方法（会自动转换为本地时区）
       const year = date.getFullYear()
       const month = String(date.getMonth() + 1).padStart(2, '0')
       const day = String(date.getDate()).padStart(2, '0')
@@ -342,7 +383,16 @@ export class OrderService {
       const minutes = String(date.getMinutes()).padStart(2, '0')
       const seconds = String(date.getSeconds()).padStart(2, '0')
 
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+      const formatted = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+
+      // 调试日志：显示UTC时间和本地时间的转换
+      console.log('时间转换:', {
+        utc: dateTimeStr,
+        local: formatted,
+        timezone: `UTC${date.getTimezoneOffset() / -60 >= 0 ? '+' : ''}${date.getTimezoneOffset() / -60}`
+      })
+
+      return formatted
     } catch (error) {
       console.error('日期格式化失败:', error)
       return dateTimeStr

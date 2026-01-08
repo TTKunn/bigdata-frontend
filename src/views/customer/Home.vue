@@ -8,24 +8,36 @@
 
       <el-row :gutter="20" class="stats-row">
         <el-col :xs="24" :sm="12" :md="6">
-          <el-card class="stat-card">
+          <el-card class="stat-card" v-loading="statsLoading">
             <div class="stat-content">
-              <el-icon class="stat-icon orders"><ShoppingCartIcon /></el-icon>
+              <el-icon class="stat-icon revenue"><MoneyIcon /></el-icon>
               <div class="stat-info">
-                <div class="stat-value">128</div>
-                <div class="stat-label">订单总数</div>
+                <div class="stat-value">{{ formattedTotalSales }}</div>
+                <div class="stat-label">总销售额</div>
               </div>
             </div>
           </el-card>
         </el-col>
 
         <el-col :xs="24" :sm="12" :md="6">
-          <el-card class="stat-card">
+          <el-card class="stat-card" v-loading="statsLoading">
             <div class="stat-content">
-              <el-icon class="stat-icon products"><BoxIcon /></el-icon>
+              <el-icon class="stat-icon daily-revenue"><MoneyIcon /></el-icon>
               <div class="stat-info">
-                <div class="stat-value">{{ totalProducts }}</div>
-                <div class="stat-label">商品总数</div>
+                <div class="stat-value">{{ formattedDailySales }}</div>
+                <div class="stat-label">当日销售额</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :sm="12" :md="6">
+          <el-card class="stat-card" v-loading="statsLoading">
+            <div class="stat-content">
+              <el-icon class="stat-icon orders"><ShoppingCartIcon /></el-icon>
+              <div class="stat-info">
+                <div class="stat-value">{{ dailyOrderCount }}</div>
+                <div class="stat-label">当日订单数量</div>
               </div>
             </div>
           </el-card>
@@ -36,20 +48,8 @@
             <div class="stat-content">
               <el-icon class="stat-icon users"><UserIcon /></el-icon>
               <div class="stat-info">
-                <div class="stat-value">456</div>
-                <div class="stat-label">用户总数</div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-
-        <el-col :xs="24" :sm="12" :md="6">
-          <el-card class="stat-card">
-            <div class="stat-content">
-              <el-icon class="stat-icon revenue"><MoneyIcon /></el-icon>
-              <div class="stat-info">
-                <div class="stat-value">¥98.5万</div>
-                <div class="stat-label">总销售额</div>
+                <div class="stat-value">1</div>
+                <div class="stat-label">用户量</div>
               </div>
             </div>
           </el-card>
@@ -169,17 +169,24 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ShoppingCart as ShoppingCartIcon, Box as BoxIcon, User as UserIcon, Money as MoneyIcon } from '@element-plus/icons-vue'
 import { useCartStore } from '../../stores/cart'
 import { useProductStore } from '../../stores/product'
+import { statisticsService } from '../../services/statisticsService'
 import ProductDetailDialog from '../../components/ProductDetailDialog.vue'
 
 const cartStore = useCartStore()
 const productStore = useProductStore()
 const detailDialogVisible = ref(false)
 const selectedProduct = ref(null)
+
+// 销售统计数据
+const statsLoading = ref(false)
+const totalSales = ref(0)
+const dailySales = ref(0)
+const dailyOrderCount = ref(0)
 
 // 使用store中的数据
 const products = computed(() => productStore.products)
@@ -190,12 +197,84 @@ const isLoading = computed(() => productStore.isLoading)
 const hasError = computed(() => productStore.hasError)
 const error = computed(() => productStore.error)
 
-// 组件挂载时获取商品数据
+// 格式化总销售额显示
+const formattedTotalSales = computed(() => {
+  return statisticsService.formatAmount(totalSales.value)
+})
+
+// 格式化当日销售额显示
+const formattedDailySales = computed(() => {
+  return statisticsService.formatAmount(dailySales.value)
+})
+
+// 获取销售统计数据
+const fetchStatistics = async () => {
+  statsLoading.value = true
+  try {
+    // 并行获取三个统计数据
+    const [totalSalesData, dailySalesData, dailyOrdersData] = await Promise.all([
+      statisticsService.getTotalSales(),
+      statisticsService.getDailySales(),
+      statisticsService.getDailyOrders()
+    ])
+
+    totalSales.value = totalSalesData.totalSales
+    dailySales.value = dailySalesData.dailySales
+    dailyOrderCount.value = dailyOrdersData.orderCount
+
+    console.log('销售统计数据获取成功:', {
+      totalSales: totalSales.value,
+      dailySales: dailySales.value,
+      dailyOrderCount: dailyOrderCount.value
+    })
+  } catch (error) {
+    console.error('获取销售统计数据失败:', error)
+    // 不显示错误提示，使用默认值0
+  } finally {
+    statsLoading.value = false
+  }
+}
+
+// 处理SSE数据更新
+const handleSSEUpdate = (updateEvent) => {
+  console.log('首页收到SSE更新事件:', updateEvent)
+
+  // 根据事件类型更新对应的数据
+  switch (updateEvent.eventType) {
+    case 'total_sales':
+      if (updateEvent.data.totalSales !== undefined) {
+        totalSales.value = updateEvent.data.totalSales
+      }
+      break
+    case 'daily_sales':
+      if (updateEvent.data.dailySales !== undefined) {
+        dailySales.value = updateEvent.data.dailySales
+      }
+      if (updateEvent.data.orderCount !== undefined) {
+        dailyOrderCount.value = updateEvent.data.orderCount
+      }
+      break
+  }
+}
+
+// 组件挂载时获取数据
 onMounted(async () => {
   try {
-    await productStore.fetchProducts(1, 8)
+    // 并行获取商品数据和统计数据
+    await Promise.all([
+      productStore.fetchProducts(1, 8),
+      fetchStatistics()
+    ])
+
+    // 建立SSE连接
+    statisticsService.connectSSE(
+      handleSSEUpdate,
+      (error) => {
+        console.error('首页SSE连接错误:', error)
+      }
+    )
   } catch (error) {
-    ElMessage.error('获取商品列表失败，请稍后重试')
+    ElMessage.error('获取数据失败，请稍后重试')
   }
 })
 
@@ -248,6 +327,11 @@ const refreshProducts = async () => {
     ElMessage.error('刷新商品列表失败')
   }
 }
+
+// 组件卸载时清理SSE连接
+onUnmounted(() => {
+  statisticsService.disconnectSSE()
+})
 </script>
 
 <style scoped>
@@ -400,6 +484,10 @@ const refreshProducts = async () => {
 
 .stat-icon.revenue {
   background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+.stat-icon.daily-revenue {
+  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
 }
 
 .stat-info {

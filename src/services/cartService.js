@@ -227,9 +227,37 @@ export class CartService {
       // 新增字段
       addTime: item.addTime,        // 添加时间
 
-      // 图片URL - 从后端返回的 imageUrl 字段获取
-      image: item.imageUrl || item.image || `https://via.placeholder.com/80x80?text=${encodeURIComponent(item.productName || 'Product')}`
+      // 图片URL - 处理后端返回的 imageUrl 字段（支持 HTTP URL 和 HDFS 路径）
+      image: this.extractImageUrl(item.imageUrl || item.image, item.productName)
     }
+  }
+
+  /**
+   * 提取并转换图片URL
+   * @param {string} imageUrl - 图片URL（可能是 HTTP URL 或 HDFS 路径）
+   * @param {string} productName - 商品名称（用于占位图）
+   * @returns {string} 处理后的图片URL
+   */
+  extractImageUrl(imageUrl, productName = 'Product') {
+    // 如果没有图片URL，使用占位图
+    if (!imageUrl) {
+      return `https://via.placeholder.com/80x80?text=${encodeURIComponent(productName)}`
+    }
+
+    // 如果已经是完整的 HTTP/HTTPS URL，直接返回
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return imageUrl
+    }
+
+    // 如果是 HDFS 路径，转换为后端图片服务 URL
+    if (imageUrl.startsWith('hdfs://')) {
+      // 从 HDFS 路径中提取文件名
+      const fileName = imageUrl.split('/').pop()
+      return `http://localhost:8080/api/images/${fileName}`
+    }
+
+    // 其他情况，假设是相对路径，拼接为完整 URL
+    return `http://localhost:8080/api/images/${imageUrl}`
   }
 
   /**

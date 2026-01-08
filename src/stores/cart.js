@@ -48,18 +48,26 @@ export const useCartStore = defineStore('cart', () => {
   /**
    * 异步添加商品到购物车
    * 实现乐观更新 + 后端同步策略
+   * @param {object} product - 商品信息
+   * @param {number} quantity - 添加数量，默认为1
    */
-  async function addToCart(product) {
+  async function addToCart(product, quantity = 1) {
     if (!product || !product.id) {
       ElMessage.error('商品信息不完整')
       return
     }
 
+    if (quantity <= 0) {
+      ElMessage.error('添加数量必须大于0')
+      return
+    }
+
     const existingItem = getItemById(product.id)
+    const oldQuantity = existingItem ? existingItem.quantity : 0
 
     // 乐观更新：先更新本地状态
     if (existingItem) {
-      existingItem.quantity++
+      existingItem.quantity += quantity
     } else {
       const newItem = {
         id: product.id,
@@ -68,7 +76,7 @@ export const useCartStore = defineStore('cart', () => {
         image: product.image,
         category: product.category,
         brand: product.brand || '',
-        quantity: 1,
+        quantity: quantity,
         selected: true,
         addTime: Date.now() // 本地时间戳
       }
@@ -78,16 +86,17 @@ export const useCartStore = defineStore('cart', () => {
     try {
       // 同步到后端
       syncing.value = true
-      await cartService.addToCart(product.id, existingItem ? existingItem.quantity : 1)
+      const newTotalQuantity = existingItem ? existingItem.quantity : quantity
+      await cartService.addToCart(product.id, newTotalQuantity)
       lastSyncTime.value = Date.now()
 
-      ElMessage.success(`${product.name} 已添加到购物车`)
+      ElMessage.success('添加成功')
     } catch (err) {
       // 同步失败，回滚本地状态
       console.error('添加商品到购物车失败:', err)
 
       if (existingItem) {
-        existingItem.quantity--
+        existingItem.quantity = oldQuantity
         if (existingItem.quantity <= 0) {
           removeFromCart(product.id)
         }
@@ -95,8 +104,8 @@ export const useCartStore = defineStore('cart', () => {
         const index = items.value.findIndex(item => item.id === product.id)
         if (index > -1) {
           items.value.splice(index, 1)
-    }
-  }
+        }
+      }
 
       ElMessage.error(err.message || '添加到购物车失败')
     } finally {
@@ -211,8 +220,9 @@ export const useCartStore = defineStore('cart', () => {
 
   /**
    * 异步删除选中的商品
+   * @param {boolean} silent - 是否静默删除（不显示成功提示）
    */
-  async function clearSelected() {
+  async function clearSelected(silent = false) {
     const selectedProductIds = selectedItems.value.map(item => item.id)
     if (selectedProductIds.length === 0) return
 
@@ -227,7 +237,9 @@ export const useCartStore = defineStore('cart', () => {
       await cartService.removeItems(selectedProductIds)
       lastSyncTime.value = Date.now()
 
-      ElMessage.success(`已删除 ${selectedProductIds.length} 个商品`)
+      if (!silent) {
+        ElMessage.success(`已删除 ${selectedProductIds.length} 个商品`)
+      }
     } catch (err) {
       // 同步失败，回滚
       console.error('删除选中的商品失败:', err)

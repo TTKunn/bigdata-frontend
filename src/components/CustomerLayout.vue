@@ -15,6 +15,7 @@
           router
         >
           <el-menu-item index="/customer/home">首页</el-menu-item>
+          <el-menu-item index="/customer/dashboard">数据看板</el-menu-item>
           <el-menu-item index="/customer/cart">购物车</el-menu-item>
           <el-menu-item index="/customer/orders">我的订单</el-menu-item>
         </el-menu>

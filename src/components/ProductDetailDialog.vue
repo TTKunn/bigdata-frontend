@@ -193,12 +193,11 @@ const getStatusText = (status) => {
   return productService.getStatusText(status || 'ACTIVE')
 }
 
-const handleAddToCart = () => {
+const handleAddToCart = async () => {
   if (props.product && (props.product.stock || 0) > 0) {
-    for (let i = 0; i < quantity.value; i++) {
-      cartStore.addToCart(props.product)
-    }
-    ElMessage.success(`已添加 ${quantity.value} 件 ${props.product.name} 到购物车`)
+    // 一次性添加指定数量的商品
+    await cartStore.addToCart(props.product, quantity.value)
+    // 成功消息由cartStore内部处理
     quantity.value = 1
     // 添加成功后关闭弹窗
     handleClose()

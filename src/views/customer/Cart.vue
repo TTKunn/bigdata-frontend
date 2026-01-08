@@ -136,21 +136,6 @@ const isSyncing = ref(false)  // 标志位，防止循环触发
 const showPaymentDialog = ref(false)
 const currentOrderId = ref('')  // 当前订单ID
 
-// 页面加载时获取购物车数据
-onMounted(async () => {
-  try {
-    // 检查是否需要同步数据
-    if (cartStore.needsSync()) {
-      await cartStore.fetchCart()
-    }
-    // 同步表格选中状态
-    await nextTick()
-    syncTableSelection()
-  } catch (error) {
-    console.error('获取购物车数据失败:', error)
-  }
-})
-
 const goToHome = () => {
   router.push('/customer/home')
 }
@@ -173,9 +158,18 @@ const syncTableSelection = () => {
   })
 }
 
-// 初始化表格选中状态
-onMounted(() => {
-  syncTableSelection()
+// 页面加载时获取购物车数据并初始化表格选中状态
+onMounted(async () => {
+  try {
+    // 每次进入购物车页面都从后端获取最新数据（包括图片URL）
+    await cartStore.fetchCart()
+
+    // 同步表格选中状态
+    await nextTick()
+    syncTableSelection()
+  } catch (error) {
+    console.error('获取购物车数据失败:', error)
+  }
 })
 
 // 监听购物车商品变化，同步选中状态
@@ -284,8 +278,8 @@ const handleCheckout = async () => {
 
 const handlePaymentSuccess = async (orderId) => {
   try {
-    // 支付成功后，清空选中的商品
-    await cartStore.clearSelected()
+    // 支付成功后，静默清空选中的商品（不显示删除提示）
+    await cartStore.clearSelected(true)
 
     ElMessage.success('订单支付成功！')
 
