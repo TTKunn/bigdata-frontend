@@ -95,8 +95,8 @@ export const useCartStore = defineStore('cart', () => {
         const index = items.value.findIndex(item => item.id === product.id)
         if (index > -1) {
           items.value.splice(index, 1)
-        }
-      }
+    }
+  }
 
       ElMessage.error(err.message || '添加到购物车失败')
     } finally {
@@ -125,7 +125,7 @@ export const useCartStore = defineStore('cart', () => {
 
     // 乐观更新
     if (newQuantity <= 0) {
-      removeFromCart(productId)
+        removeFromCart(productId)
     } else {
       item.quantity = newQuantity
     }
@@ -164,7 +164,7 @@ export const useCartStore = defineStore('cart', () => {
     if (!item) return
 
     // 乐观更新
-    item.selected = !item.selected
+      item.selected = !item.selected
 
     try {
       // 同步到后端

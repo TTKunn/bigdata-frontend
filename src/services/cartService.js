@@ -227,8 +227,8 @@ export class CartService {
       // 新增字段
       addTime: item.addTime,        // 添加时间
 
-      // 前端扩展字段 (本地维护，不同步到后端)
-      image: ''  // 图片URL，暂时为空，后续可根据商品详情获取
+      // 图片URL - 从后端返回的 imageUrl 字段获取
+      image: item.imageUrl || item.image || `https://via.placeholder.com/80x80?text=${encodeURIComponent(item.productName || 'Product')}`
     }
   }
 

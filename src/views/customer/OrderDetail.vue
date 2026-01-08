@@ -5,6 +5,16 @@
       <h2>订单详情</h2>
     </div>
 
+    <!-- 加载状态 -->
+    <div v-if="loading" class="loading-section">
+      <el-skeleton :loading="loading" animated :count="3" :rows="5" />
+    </div>
+
+    <div v-else-if="!order.id" class="empty-section">
+      <el-empty description="订单不存在" />
+    </div>
+
+    <div v-else>
     <el-card class="order-info-card">
       <template #header>
         <div class="card-header">
@@ -93,62 +103,68 @@
         <el-divider />
         <div class="summary-row total">
           <span class="label">订单总额：</span>
-          <span class="value">¥{{ order.totalAmount.toLocaleString() }}</span>
+          <span class="value">¥{{ order.actualAmount ? order.actualAmount.toLocaleString() : order.totalAmount.toLocaleString() }}</span>
         </div>
       </div>
     </el-card>
+
+    <!-- 收货地址信息 -->
+    <el-card v-if="order.address" class="address-card">
+      <template #header>
+        <div class="card-header">
+          <span>收货地址</span>
+        </div>
+      </template>
+      <div class="address-content">
+        <div class="address-row">
+          <span class="label">收货人：</span>
+          <span class="value">{{ order.address.receiver }}</span>
+        </div>
+        <div class="address-row">
+          <span class="label">联系电话：</span>
+          <span class="value">{{ order.address.phone }}</span>
+        </div>
+        <div class="address-row">
+          <span class="label">收货地址：</span>
+          <span class="value">{{ order.address.address }}</span>
+        </div>
+        <div class="address-row" v-if="order.address.postcode">
+          <span class="label">邮政编码：</span>
+          <span class="value">{{ order.address.postcode }}</span>
+        </div>
+      </div>
+    </el-card>
+    </div> <!-- 关闭 v-else div -->
 
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft as ArrowLeftIcon } from '@element-plus/icons-vue'
+import { useOrderStore } from '../../stores/order'
 
 const route = useRoute()
 const router = useRouter()
+const orderStore = useOrderStore()
 
-// 模拟订单数据（实际应从后端获取）
-const order = ref({
-  id: 1,
-  orderNumber: 'ORD' + Date.now(),
-  createTime: new Date().toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  }),
-  payTime: new Date().toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  }),
-  status: '已支付',
-  totalAmount: 9798,
-  items: [
-    {
-      id: 1,
-      name: 'iPhone 15 Pro',
-      price: 7999,
-      quantity: 1,
-      image: 'https://via.placeholder.com/80x80?text=iPhone+15+Pro'
-    },
-    {
-      id: 2,
-      name: 'AirPods Pro',
-      price: 1899,
-      quantity: 1,
-      image: 'https://via.placeholder.com/80x80?text=AirPods+Pro'
-    }
-  ]
+// 从 store 获取当前订单
+const order = computed(() => orderStore.currentOrder || {
+  id: '',
+  orderNumber: '',
+  createTime: '',
+  payTime: null,
+  status: '',
+  totalAmount: 0,
+  actualAmount: 0,
+  items: [],
+  address: null
 })
+
+// 加载状态
+const loading = ref(false)
 
 const goBack = () => {
   router.push('/customer/orders')
@@ -169,30 +185,53 @@ const getTotalQuantity = () => {
 }
 
 
-const handleConfirmDelivery = () => {
-  ElMessageBox.confirm(
-    '确认已收到商品？',
-    '确认收货',
-    {
-      confirmButtonText: '确认',
-      cancelButtonText: '取消',
-      type: 'warning',
-      confirmButtonClass: 'el-button--success',
+const handleConfirmDelivery = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确认已收到商品？',
+      '确认收货',
+      {
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--success',
+      }
+    )
+
+    // 调用完成订单API
+    await orderStore.completeOrder(order.value.id)
+
+    // 刷新订单详情
+    await fetchOrderDetail()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('确认收货失败:', error)
     }
-  )
-    .then(() => {
-      ElMessage.success('确认收货成功！')
-      order.value.status = '已完成'
-    })
-    .catch(() => {
-      ElMessage.info('已取消确认收货')
-    })
+  }
 }
 
-onMounted(() => {
-  // 实际应根据路由参数从后端获取订单详情
+const fetchOrderDetail = async () => {
   const orderId = route.params.id
-  console.log('订单ID:', orderId)
+  if (!orderId) {
+    ElMessage.error('订单ID不存在')
+    router.push('/customer/orders')
+    return
+  }
+
+  loading.value = true
+  try {
+    await orderStore.fetchOrderDetail(orderId)
+  } catch (error) {
+    console.error('获取订单详情失败:', error)
+    // 如果订单不存在，返回订单列表页
+    router.push('/customer/orders')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(async () => {
+  await fetchOrderDetail()
 })
 </script>
 
@@ -233,7 +272,8 @@ onMounted(() => {
 
 .order-info-card,
 .items-card,
-.summary-card {
+.summary-card,
+.address-card {
   margin-bottom: 20px;
 }
 
@@ -330,6 +370,38 @@ onMounted(() => {
   font-size: 24px;
   font-weight: 700;
   color: #f56c6c;
+}
+
+/* 收货地址样式 */
+.address-content {
+  padding: 20px;
+}
+
+.address-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 15px;
+}
+
+.address-row:last-child {
+  margin-bottom: 0;
+}
+
+.address-row .label {
+  min-width: 80px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.address-row .value {
+  color: #303133;
+}
+
+/* 加载和空状态样式 */
+.loading-section,
+.empty-section {
+  padding: 40px 20px;
 }
 
 </style>

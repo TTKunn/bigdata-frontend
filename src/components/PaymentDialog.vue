@@ -88,6 +88,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { Loading, SuccessFilled } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { useOrderStore } from '../stores/order'
 
 const props = defineProps({
   modelValue: {
@@ -105,10 +107,16 @@ const props = defineProps({
   totalAmount: {
     type: Number,
     default: 0
+  },
+  orderId: {
+    type: String,
+    default: ''
   }
 })
 
 const emit = defineEmits(['update:modelValue', 'paymentSuccess'])
+
+const orderStore = useOrderStore()
 
 const dialogVisible = computed({
   get: () => props.modelValue,
@@ -138,19 +146,30 @@ const handleCancel = () => {
 }
 
 const handlePayment = async () => {
+  if (!props.orderId) {
+    ElMessage.error('订单ID不存在，无法支付')
+    return
+  }
+
   paying.value = true
 
-  // 模拟支付请求（2秒延迟）
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  try {
+    // 调用真实的支付API
+    await orderStore.payOrder(props.orderId)
 
-  paying.value = false
-  paymentSuccess.value = true
+    paying.value = false
+    paymentSuccess.value = true
 
-  // 显示成功状态1.5秒后触发跳转
-  setTimeout(() => {
+    // 显示成功状态1.5秒后触发跳转
+    setTimeout(() => {
+      dialogVisible.value = false
+      emit('paymentSuccess', props.orderId)
+    }, 1500)
+  } catch (error) {
+    console.error('支付失败:', error)
+    paying.value = false
     dialogVisible.value = false
-    emit('paymentSuccess')
-  }, 1500)
+  }
 }
 </script>
 

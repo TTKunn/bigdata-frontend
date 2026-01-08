@@ -113,6 +113,7 @@
       :items="cartStore.selectedItems"
       :item-count="cartStore.totalCount"
       :total-amount="cartStore.totalPrice"
+      :order-id="currentOrderId"
       @payment-success="handlePaymentSuccess"
     />
   </div>
@@ -124,13 +125,16 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete as DeleteIcon, Loading } from '@element-plus/icons-vue'
 import { useCartStore } from '../../stores/cart'
+import { useOrderStore } from '../../stores/order'
 import PaymentDialog from '../../components/PaymentDialog.vue'
 
 const router = useRouter()
 const cartStore = useCartStore()
+const orderStore = useOrderStore()
 const tableRef = ref(null)
 const isSyncing = ref(false)  // 标志位，防止循环触发
 const showPaymentDialog = ref(false)
+const currentOrderId = ref('')  // 当前订单ID
 
 // 页面加载时获取购物车数据
 onMounted(async () => {
@@ -253,24 +257,35 @@ const handleClearCart = async () => {
   }
 }
 
-const handleCheckout = () => {
+const handleCheckout = async () => {
   // 检查是否有选中的商品
   if (!cartStore.hasSelected) {
     ElMessage.warning('请至少选择一件商品')
     return
   }
 
-  // 打开支付弹窗
-  showPaymentDialog.value = true
+  try {
+    // 获取选中商品的ID列表
+    const selectedProductIds = cartStore.selectedItems.map(item => item.id)
+
+    // 创建订单
+    const order = await orderStore.createOrder(selectedProductIds, '')
+
+    // 保存订单ID
+    currentOrderId.value = order.id
+
+    // 打开支付弹窗
+    showPaymentDialog.value = true
+  } catch (error) {
+    console.error('创建订单失败:', error)
+    // 错误信息已由 orderStore 显示
+  }
 }
 
-const handlePaymentSuccess = async () => {
+const handlePaymentSuccess = async (orderId) => {
   try {
     // 支付成功后，清空选中的商品
     await cartStore.clearSelected()
-
-    // 生成订单ID（实际应由后端生成）
-    const orderId = Date.now()
 
     ElMessage.success('订单支付成功！')
 
@@ -279,6 +294,9 @@ const handlePaymentSuccess = async () => {
   } catch (error) {
     console.error('处理支付成功失败:', error)
     ElMessage.error('处理订单失败，请稍后查看订单状态')
+
+    // 即使清空购物车失败，也跳转到订单详情页
+    router.push(`/customer/orders/${orderId}`)
   }
 }
 </script>

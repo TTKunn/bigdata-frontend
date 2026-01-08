@@ -78,8 +78,8 @@ export class ProductService {
       price: product.price,              // 价格
       category: product.category,        // 分类ID
 
-      // 图片处理 (支持null值)
-      image: this.extractImageUrl(product.image),
+      // 图片处理 - 后端返回的是 imageUrl 字段（字符串）
+      image: this.extractImageUrl(product.imageUrl || product.image),
 
       // 新增字段
       brand: product.brand || '',        // 品牌
@@ -107,8 +107,8 @@ export class ProductService {
       description: product.description,
       category: product.category,
 
-      // 图片处理 (支持null值)
-      image: this.extractImageUrl(product.image),
+      // 图片处理 - 后端返回的是 imageUrl 字段（字符串）
+      image: this.extractImageUrl(product.imageUrl || product.image),
 
       // 库存信息 (从对象中提取)
       stock: product.stock?.total || 0,
@@ -125,26 +125,56 @@ export class ProductService {
   }
 
   /**
-   * 提取图片URL，处理null值情况
-   * @param {object|null} imageObj - 后端图片对象
+   * 提取图片URL，处理null值和不同格式
+   * @param {string|object|null} imageData - 后端图片数据（字符串URL或对象）
    * @returns {string} 图片URL
    */
-  extractImageUrl(imageObj) {
-    if (!imageObj || !imageObj.id) {
-      // 输出警告但不影响功能
-      console.warn('商品图片字段为空，使用默认占位图:', imageObj)
+  extractImageUrl(imageData) {
+    // 处理空值情况
+    if (!imageData) {
+      console.warn('商品图片字段为空，使用默认占位图')
       return 'https://via.placeholder.com/300x300?text=No+Image'
     }
 
-    // 如果是完整的HTTP URL，直接返回
-    if (imageObj.id.startsWith('http://') || imageObj.id.startsWith('https://')) {
-      return imageObj.id
+    // 如果是字符串
+    if (typeof imageData === 'string') {
+      return this.convertToHttpUrl(imageData)
     }
 
-    // 对于HDFS路径，可能需要转换为可访问的URL
-    // 这里先直接返回，后续可根据需要添加转换逻辑
-    console.log('使用HDFS图片路径:', imageObj.id)
-    return imageObj.id
+    // 如果是对象格式（旧格式，向后兼容）
+    if (typeof imageData === 'object' && imageData.id) {
+      return this.convertToHttpUrl(imageData.id)
+    }
+
+    // 未知格式，使用默认占位图
+    console.warn('未知的图片格式:', imageData)
+    return 'https://via.placeholder.com/300x300?text=No+Image'
+  }
+
+  /**
+   * 将图片路径转换为 HTTP URL
+   * @param {string} path - 图片路径（可能是 HTTP URL 或 HDFS 路径）
+   * @returns {string} HTTP URL
+   */
+  convertToHttpUrl(path) {
+    // 如果已经是完整的 HTTP/HTTPS URL，直接返回
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path
+    }
+
+    // 如果是 HDFS 路径，转换为后端图片服务 URL
+    if (path.startsWith('hdfs://')) {
+      // 从 HDFS 路径中提取文件名
+      // 例如: hdfs://bigdata01:9000/product_images/mate60pro.png -> mate60pro.png
+      const fileName = path.split('/').pop()
+      const imageUrl = `http://localhost:8080/api/images/${fileName}`
+      console.log('HDFS路径转换为HTTP URL:', path, '->', imageUrl)
+      return imageUrl
+    }
+
+    // 其他情况，假设是相对路径，拼接为完整 URL
+    console.log('相对路径转换为HTTP URL:', path)
+    return `http://localhost:8080/api/images/${path}`
   }
 
   /**
@@ -187,3 +217,4 @@ export class ProductService {
 
 // 创建单例实例
 export const productService = new ProductService()
+

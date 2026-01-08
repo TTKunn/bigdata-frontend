@@ -24,7 +24,7 @@
 
         <el-divider />
 
-        <div class="order-items compact">
+        <div class="order-items compact" v-if="order.items && order.items.length > 0">
           <div class="order-item">
             <img :src="order.items[0].image" :alt="order.items[0].name" class="item-image" />
             <div class="item-info">
@@ -35,6 +35,9 @@
               等 {{ order.items.length - 1 }} 件商品
             </div>
           </div>
+        </div>
+        <div class="order-items-summary" v-else>
+          <span class="items-count">共 {{ order.itemCount || 0 }} 件商品</span>
         </div>
 
         <el-divider />
@@ -86,105 +89,49 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useOrderStore } from '../../stores/order'
 
 const router = useRouter()
-
-// 模拟的订单数据源（将来会从后端获取）
-const mockOrders = [
-  {
-    id: 1,
-    orderNumber: 'ORD202601060001',
-    createTime: '2026-01-06 14:30:25',
-    status: '未支付',
-    totalAmount: 9798,
-    items: [
-      {
-        id: 1,
-        name: 'iPhone 15 Pro',
-        price: 7999,
-        quantity: 1,
-        image: 'https://via.placeholder.com/80x80?text=iPhone+15+Pro'
-      },
-      {
-        id: 2,
-        name: 'AirPods Pro',
-        price: 1899,
-        quantity: 1,
-        image: 'https://via.placeholder.com/80x80?text=AirPods+Pro'
-      }
-    ]
-  },
-  {
-    id: 2,
-    orderNumber: 'ORD202601050015',
-    createTime: '2026-01-05 10:15:42',
-    status: '已支付',
-    totalAmount: 16798,
-    items: [
-      {
-        id: 3,
-        name: 'MacBook Pro 14',
-        price: 15999,
-        quantity: 1,
-        image: 'https://via.placeholder.com/80x80?text=MacBook+Pro+14'
-      },
-      {
-        id: 4,
-        name: 'Magic Mouse',
-        price: 599,
-        quantity: 1,
-        image: 'https://via.placeholder.com/80x80?text=Magic+Mouse'
-      }
-    ]
-  },
-  {
-    id: 3,
-    orderNumber: 'ORD202601040032',
-    createTime: '2026-01-04 16:45:18',
-    status: '已完成',
-    totalAmount: 7998,
-    items: [
-      {
-        id: 5,
-        name: 'iPad Air',
-        price: 4799,
-        quantity: 1,
-        image: 'https://via.placeholder.com/80x80?text=iPad+Air'
-      },
-      {
-        id: 6,
-        name: 'Apple Watch Series 9',
-        price: 3199,
-        quantity: 1,
-        image: 'https://via.placeholder.com/80x80?text=Apple+Watch+S9'
-      }
-    ]
-  }
-]
+const orderStore = useOrderStore()
 
 // 分页相关状态
 const currentPage = ref(1)
 const pageSize = ref(10)
-const totalOrders = ref(mockOrders.length)
 
-// 计算当前页显示的订单
-const orders = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return mockOrders.slice(start, end)
+// 从 store 获取订单列表和总数
+const orders = computed(() => orderStore.orders)
+const totalOrders = computed(() => orderStore.totalOrders)
+
+// 页面加载时获取订单列表
+onMounted(async () => {
+  await fetchOrders()
 })
 
-// 分页事件处理
-const handleSizeChange = (newSize) => {
-  pageSize.value = newSize
-  currentPage.value = 1
+// 获取订单列表
+const fetchOrders = async () => {
+  try {
+    await orderStore.fetchOrders({
+      page: currentPage.value,
+      size: pageSize.value
+    })
+  } catch (error) {
+    console.error('获取订单列表失败:', error)
+  }
 }
 
-const handleCurrentChange = (newPage) => {
+// 分页事件处理
+const handleSizeChange = async (newSize) => {
+  pageSize.value = newSize
+  currentPage.value = 1
+  await fetchOrders()
+}
+
+const handleCurrentChange = async (newPage) => {
   currentPage.value = newPage
+  await fetchOrders()
   // 滚动到页面顶部
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -203,23 +150,64 @@ const getStatusType = (status) => {
   return statusMap[status] || 'info'
 }
 
-const handlePay = (order) => {
-  ElMessage.info('跳转到支付页面...')
-}
+const handlePay = async (order) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要支付订单 ${order.orderNumber} 吗？`,
+      '确认支付',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    )
 
+    // 调用支付API
+    await orderStore.payOrder(order.id)
+
+    // 刷新订单列表
+    await fetchOrders()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('支付订单失败:', error)
+    }
+  }
+}
 
 const handleViewDetail = (order) => {
   // 跳转到订单详情页
   router.push(`/customer/orders/${order.id}`)
 }
 
-const handleCancel = (order) => {
-  ElMessage.info(`已取消订单: ${order.orderNumber}`)
-  order.status = '已取消'
+const handleCancel = async (order) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要取消订单 ${order.orderNumber} 吗？`,
+      '取消订单',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    // 调用取消订单API
+    await orderStore.cancelOrder(order.id)
+
+    // 刷新订单列表
+    await fetchOrders()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('取消订单失败:', error)
+    }
+  }
 }
 
 const getOrderCount = (order) => {
-  return order.items.reduce((sum, it) => sum + it.quantity, 0)
+  if (order.items && order.items.length > 0) {
+    return order.items.reduce((sum, it) => sum + it.quantity, 0)
+  }
+  return order.itemCount || 0
 }
 </script>
 
@@ -362,6 +350,19 @@ const getOrderCount = (order) => {
 .order-actions {
   display: flex;
   gap: 8px;
+}
+
+/* 订单商品摘要样式 */
+.order-items-summary {
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.items-count {
+  color: #606266;
+  font-size: 14px;
 }
 
 /* 分页样式 */

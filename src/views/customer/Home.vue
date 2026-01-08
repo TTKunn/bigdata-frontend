@@ -93,17 +93,17 @@
       <!-- 商品列表 -->
       <div v-else>
         <el-row :gutter="20" v-if="products.length > 0">
-          <el-col
-            v-for="product in products"
-            :key="product.id"
-            :xs="24"
-            :sm="12"
-            :md="8"
-            :lg="6"
-          >
-            <el-card class="product-card" shadow="hover">
-              <div class="product-image">
-                <img :src="product.image" :alt="product.name" />
+      <el-col
+        v-for="product in products"
+        :key="product.id"
+        :xs="24"
+        :sm="12"
+        :md="8"
+        :lg="6"
+      >
+        <el-card class="product-card" shadow="hover">
+          <div class="product-image">
+            <img :src="product.image" :alt="product.name" />
                 <!-- 品牌标签 -->
                 <el-tag
                   v-if="product.brand"
@@ -112,30 +112,30 @@
                   size="small"
                 >
                   {{ product.brand }}
-                </el-tag>
-              </div>
+            </el-tag>
+          </div>
 
-              <div class="product-info">
-                <h3 class="product-name">{{ product.name }}</h3>
+          <div class="product-info">
+            <h3 class="product-name">{{ product.name }}</h3>
                 <p class="product-description">{{ product.description || '暂无描述' }}</p>
 
-                <div class="product-footer">
-                  <div class="price-section">
-                    <span class="price">¥{{ product.price.toLocaleString() }}</span>
-                  </div>
-
-                  <el-button
-                    type="primary"
-                    :icon="ShoppingCartIcon"
-                    @click="handleViewDetail(product)"
-                  >
-                    查看详情
-                  </el-button>
-                </div>
+            <div class="product-footer">
+              <div class="price-section">
+                <span class="price">¥{{ product.price.toLocaleString() }}</span>
               </div>
-            </el-card>
-          </el-col>
-        </el-row>
+
+              <el-button
+                type="primary"
+                :icon="ShoppingCartIcon"
+                @click="handleViewDetail(product)"
+              >
+                    查看详情
+              </el-button>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
 
         <!-- 空状态 -->
         <div v-else class="empty-container">
@@ -211,8 +211,8 @@ const handleSizeChange = async (newSize) => {
 const handleCurrentChange = async (newPage) => {
   try {
     await productStore.goToPage(newPage)
-    // 滚动到页面顶部
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+  // 滚动到页面顶部
+  window.scrollTo({ top: 0, behavior: 'smooth' })
   } catch (error) {
     ElMessage.error('切换页面失败')
   }
@@ -234,7 +234,7 @@ const handleViewDetail = async (product) => {
     // 获取完整的商品详情
     const productDetail = await productStore.fetchProductDetail(product.id)
     selectedProduct.value = productDetail
-    detailDialogVisible.value = true
+  detailDialogVisible.value = true
   } catch (error) {
     ElMessage.error('获取商品详情失败')
   }
